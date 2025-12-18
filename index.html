@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Brick Breaker – Final Version</title>
+
+<style>
+*{box-sizing:border-box;font-family:Segoe UI,Arial}
+
+body{
+margin:0;
+min-height:100vh;
+background:linear-gradient(135deg,#141e30,#243b55);
+display:flex;
+justify-content:center;
+align-items:center;
+color:#fff
+}
+
+.container{
+width:760px;
+background:rgba(255,255,255,.12);
+backdrop-filter:blur(14px);
+border-radius:22px;
+padding:20px;
+text-align:center;
+box-shadow:0 30px 60px rgba(0,0,0,.6)
+}
+
+h1{
+margin:5px 0 15px;
+font-size:2.4rem;
+background:linear-gradient(to right,#00c6ff,#0072ff);
+-webkit-background-clip:text;
+color:transparent
+}
+
+.menu input,.menu select,.menu button{
+width:100%;
+padding:12px;
+margin-top:10px;
+border:none;
+border-radius:25px;
+font-size:15px
+}
+
+.menu button{
+background:linear-gradient(to right,#00c6ff,#0072ff);
+color:#fff;
+cursor:pointer
+}
+
+canvas{
+display:none;
+margin-top:15px;
+background:#000;
+border-radius:16px;
+box-shadow:0 0 25px rgba(0,200,255,.5)
+}
+
+.hud{
+display:flex;
+justify-content:space-between;
+margin-top:10px;
+font-weight:bold
+}
+
+.note{
+font-size:13px;
+margin-top:8px;
+opacity:.9
+}
+
+.hidden{display:none}
+
+/* GAME OVER */
+.overlay{
+position:absolute;
+inset:0;
+background:rgba(0,0,0,.8);
+display:none;
+justify-content:center;
+align-items:center;
+border-radius:22px
+}
+
+.modal{
+background:rgba(255,255,255,.15);
+backdrop-filter:blur(12px);
+padding:25px;
+border-radius:20px;
+width:85%
+}
+
+.modal h2{
+margin:0 0 10px;
+color:#ff7675;
+font-size:2rem
+}
+
+.modal button{
+margin-top:10px;
+width:100%;
+padding:10px;
+border:none;
+border-radius:22px;
+background:linear-gradient(to right,#00c6ff,#0072ff);
+color:#fff;
+cursor:pointer
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+<h1>Brick Breaker</h1>
+
+<div class="menu" id="menu">
+<input placeholder="Player Name (optional)">
+<select id="levelSelect">
+<option value="1">Level 1 – Easy</option>
+<option value="2">Level 2 – Medium</option>
+<option value="3">Level 3 – Hard</option>
+</select>
+<button id="startBtn">Start Game</button>
+</div>
+
+<canvas id="canvas" width="700" height="400"></canvas>
+
+<div class="hud">
+<div>Score: <span id="score">0</span></div>
+<div>Lives: <span id="lives">3</span></div>
+<div>Level: <span id="levelText">1</span></div>
+</div>
+
+<div class="note">← → Move Paddle | SPACE or CLICK to Launch</div>
+
+<div class="overlay" id="gameOver">
+<div class="modal">
+<h2>Game Over</h2>
+<p>Final Score: <b id="finalScore">0</b></p>
+<button onclick="restart()">Play Again</button>
+<button onclick="menuBack()">Change Level</button>
+<button onclick="menuBack()">Exit</button>
+</div>
+</div>
+
+</div>
+
+<script>
+/* ===== BASIC SETUP ===== */
+const canvas=document.getElementById("canvas");
+const ctx=canvas.getContext("2d");
+const scoreEl=document.getElementById("score");
+const livesEl=document.getElementById("lives");
+const levelText=document.getElementById("levelText");
+const menu=document.getElementById("menu");
+const gameOver=document.getElementById("gameOver");
+const finalScore=document.getElementById("finalScore");
+
+/* ===== LEVEL DATA (FIXED) ===== */
+const levels={
+1:{rows:3,cols:5,speed:3,paddle:100},
+2:{rows:4,cols:7,speed:4,paddle:90},
+3:{rows:5,cols:9,speed:5,paddle:80}
+};
+
+let level=1,score=0,lives=3;
+let running=false,launched=false;
+
+/* ===== INPUT ===== */
+let left=false,right=false;
+document.addEventListener("keydown",e=>{
+if(e.key==="ArrowLeft")left=true;
+if(e.key==="ArrowRight")right=true;
+if(e.key===" ")launch();
+});
+document.addEventListener("keyup",e=>{
+if(e.key==="ArrowLeft")left=false;
+if(e.key==="ArrowRight")right=false;
+});
+canvas.addEventListener("click",launch);
+
+/* ===== OBJECTS ===== */
+const paddle={x:0,w:100,h:14,speed:7};
+const ball={x:0,y:0,r:8,dx:0,dy:0};
+
+let bricks=[];
+const bw=50,bh=18,pad=8,topOff=50,leftOff=25;
+
+/* ===== FUNCTIONS ===== */
+function initBricks(){
+bricks=[];
+for(let r=0;r<levels[level].rows;r++){
+for(let c=0;c<levels[level].cols;c++){
+bricks.push({x:c*(bw+pad)+leftOff,y:r*(bh+pad)+topOff,hit:false});
+}}
+}
+
+function resetBall(){
+launched=false;
+ball.x=paddle.x+paddle.w/2;
+ball.y=canvas.height-paddle.h-ball.r;
+ball.dx=0;ball.dy=0;
+}
+
+function launch(){
+if(!launched){
+launched=true;
+const center=paddle.x+paddle.w/2;
+const offset=(ball.x-center)/(paddle.w/2);
+ball.dx=offset*4;
+ball.dy=-levels[level].speed;
+}
+}
+
+function draw(){
+ctx.clearRect(0,0,canvas.width,canvas.height);
+
+/* bricks */
+bricks.forEach(b=>{
+if(!b.hit){
+ctx.fillStyle="#4facfe";
+ctx.fillRect(b.x,b.y,bw,bh);
+}});
+
+/* paddle */
+ctx.fillStyle="#00c6ff";
+ctx.fillRect(paddle.x,canvas.height-paddle.h,paddle.w,paddle.h);
+
+/* ball */
+ctx.beginPath();
+ctx.arc(ball.x,ball.y,ball.r,0,Math.PI*2);
+ctx.fillStyle="#fff";
+ctx.fill();
+}
+
+function update(){
+if(!running)return;
+
+/* move */
+if(right&&paddle.x<canvas.width-paddle.w)paddle.x+=paddle.speed;
+if(left&&paddle.x>0)paddle.x-=paddle.speed;
+
+if(!launched)resetBall();
+else{
+ball.x+=ball.dx;
+ball.y+=ball.dy;
+}
+
+/* walls */
+if(ball.x<ball.r||ball.x>canvas.width-ball.r)ball.dx*=-1;
+if(ball.y<ball.r)ball.dy*=-1;
+
+/* paddle */
+if(ball.y+ball.r>=canvas.height-paddle.h &&
+ball.x>paddle.x&&ball.x<paddle.x+paddle.w){
+const center=paddle.x+paddle.w/2;
+const offset=(ball.x-center)/(paddle.w/2);
+ball.dx=offset*5;
+ball.dy=-Math.abs(ball.dy);
+}
+
+/* bricks */
+bricks.forEach(b=>{
+if(!b.hit &&
+ball.x>b.x&&ball.x<b.x+bw&&
+ball.y>b.y&&ball.y<b.y+bh){
+b.hit=true;
+ball.dy*=-1;
+score+=10;
+scoreEl.textContent=score;
+}});
+
+/* bottom */
+if(ball.y>canvas.height){
+lives--;
+livesEl.textContent=lives;
+if(lives<=0){
+running=false;
+finalScore.textContent=score;
+gameOver.style.display="flex";
+return;
+}
+resetBall();
+}
+
+draw();
+requestAnimationFrame(update);
+}
+
+/* ===== GAME FLOW ===== */
+document.getElementById("startBtn").onclick=()=>{
+level=parseInt(document.getElementById("levelSelect").value);
+levelText.textContent=level;
+score=0;lives=3;
+scoreEl.textContent=0;livesEl.textContent=3;
+paddle.w=levels[level].paddle;
+paddle.x=canvas.width/2-paddle.w/2;
+initBricks();resetBall();
+menu.classList.add("hidden");
+canvas.style.display="block";
+gameOver.style.display="none";
+running=true;
+update();
+};
+
+function restart(){
+gameOver.style.display="none";
+score=0;lives=3;
+scoreEl.textContent=0;livesEl.textContent=3;
+initBricks();resetBall();
+running=true;
+update();
+}
+
+function menuBack(){
+gameOver.style.display="none";
+canvas.style.display="none";
+menu.classList.remove("hidden");
+running=false;
+}
+</script>
+
+</body>
+</html>
